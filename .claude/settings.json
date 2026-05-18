@@ -1,0 +1,43 @@
+{
+  "project": {
+    "name": "flex",
+    "description": "실시간 상품 가격 추적 및 알림 서비스 — Spring WebFlux",
+    "repository": "https://github.com/gyuturn/flex"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(gh:*)",
+      "Bash(git:*)",
+      "Bash(./gradlew:*)",
+      "Bash(gradle:*)",
+      "Bash(java:*)",
+      "Bash(docker:*)",
+      "Bash(docker-compose:*)",
+      "Bash(curl:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
+    ]
+  },
+  "techStack": {
+    "backend": {
+      "language": "Java 21",
+      "framework": "Spring WebFlux",
+      "reactive": "Project Reactor (Mono / Flux)",
+      "httpClient": "WebClient"
+    },
+    "database": {
+      "driver": "R2DBC",
+      "db": "PostgreSQL"
+    },
+    "realtime": "SSE (Server-Sent Events)",
+    "notifications": ["카카오톡", "슬랙", "이메일"],
+    "build": "Gradle",
+    "ci_cd": "GitHub Actions"
+  },
+  "agents": {
+    "pm": ".claude/agents/pm.md",
+    "cto": ".claude/agents/cto.md",
+    "developer": ".claude/agents/developer.md",
+    "blog": ".claude/agents/blog.md"
+  }
+}
