@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: flex
+
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/flex
+    username: ${DB_USERNAME:flex}
+    password: ${DB_PASSWORD:flex}
+
+  flyway:
+    url: jdbc:postgresql://localhost:5432/flex
+    user: ${DB_USERNAME:flex}
+    password: ${DB_PASSWORD:flex}
+    locations: classpath:db/migration
+    enabled: true
+
+flex:
+  crawler:
+    interval-ms: 600000  # 10분
+
+logging:
+  level:
+    com.flex: DEBUG
+    io.r2dbc: INFO
