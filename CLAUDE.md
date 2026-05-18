@@ -42,17 +42,21 @@
 
 ## 기술 스택
 
-| 영역 | 기술 |
-|------|------|
-| Backend | Spring WebFlux (Reactive) |
-| Reactive | Project Reactor (Mono / Flux) |
-| HTTP Client | WebClient (비동기 크롤링) |
-| Database | R2DBC + PostgreSQL |
-| 실시간 알림 | SSE (Server-Sent Events) |
-| 외부 알림 | 카카오톡 / 슬랙 / 이메일 |
-| 스케줄러 | Spring Scheduler + Reactive |
-| 빌드 | Gradle |
-| CI/CD | GitHub Actions |
+| 영역 | 기술 | 버전 | ADR |
+|------|------|------|-----|
+| **언어** | Kotlin | 1.9.x | [ADR-001](docs/adr/ADR-001-kotlin-language.md) |
+| **Runtime** | JVM 21 | LTS | - |
+| **Backend** | Spring Boot + WebFlux | 3.3.x | [ADR-002](docs/adr/ADR-002-spring-webflux.md) |
+| **Reactive** | Project Reactor (Mono / Flux) | Reactor Core 3.x | [ADR-004](docs/adr/ADR-004-reactive-vs-coroutines.md) |
+| **Coroutines** | Kotlin Coroutines + Reactor Bridge | 1.8.x | [ADR-004](docs/adr/ADR-004-reactive-vs-coroutines.md) |
+| **HTTP Client** | WebClient (비동기 크롤링) | Spring 내장 | - |
+| **Database** | R2DBC + PostgreSQL | - | [ADR-003](docs/adr/ADR-003-r2dbc-postgresql.md) |
+| **DB Migration** | Flyway | 10.x | - |
+| **실시간 알림** | SSE (Server-Sent Events) | - | - |
+| **외부 알림** | 카카오톡 / 슬랙 / 이메일 | - | - |
+| **스케줄러** | Spring Scheduler + Reactive | - | - |
+| **빌드** | Gradle (Kotlin DSL) | 8.x | - |
+| **CI/CD** | GitHub Actions | - | - |
 
 ---
 
@@ -124,21 +128,144 @@ Closes #[이슈번호]
 
 ---
 
+## 코드 컨벤션
+
+### Kotlin 스타일
+- Kotlin 공식 스타일 가이드 준수 (ktlint 기준)
+- 클래스명: `PascalCase`, 함수명: `camelCase`, 상수: `UPPER_SNAKE_CASE`
+- `data class` 적극 활용 (불변 도메인 객체)
+- `?` nullable 타입 최소화 — 불가피한 경우에만 사용
+
+### Reactive 코드 컨벤션
+
+| 계층 | 반환 타입 | 규칙 |
+|------|-----------|------|
+| **Controller** | `suspend fun` / `Flow<T>` | 단건은 suspend, 스트림은 Flow |
+| **Service** | `Mono<T>` / `Flux<T>` | Reactor 연산자 체이닝 중심 |
+| **Repository** | `suspend fun` / `Flow<T>` | CoroutineCrudRepository 표준 |
+
+```kotlin
+// ✅ 좋은 예
+fun findActiveProducts(): Flux<Product> = ...
+suspend fun findById(id: Long): Product? = ...
+
+// ❌ 나쁜 예
+fun findActiveProducts(): List<Product> = ...  // 블로킹
+fun anything(): Mono<T> = mono { }.block()     // block() 금지
+```
+
+### 커밋 컨벤션
+```
+[#이슈번호] 타입: 메시지
+
+타입: feat / fix / refactor / docs / test / chore
+```
+
+---
+
+## ADR (Architecture Decision Records) 관리
+
+모든 아키텍처 결정은 `/docs/adr/`에 ADR 문서로 기록한다.
+
+### ADR 목록
+
+| ADR | 제목 | 상태 |
+|-----|------|------|
+| [ADR-001](docs/adr/ADR-001-kotlin-language.md) | Kotlin 언어 선택 | Accepted |
+| [ADR-002](docs/adr/ADR-002-spring-webflux.md) | Spring WebFlux 선택 | Accepted |
+| [ADR-003](docs/adr/ADR-003-r2dbc-postgresql.md) | R2DBC + PostgreSQL 선택 | Accepted |
+| [ADR-004](docs/adr/ADR-004-reactive-vs-coroutines.md) | Reactive vs Coroutines 혼용 전략 | Accepted |
+
+### ADR 작성 시점
+- 새 라이브러리/프레임워크 도입 시
+- 아키텍처 패턴 변경 시
+- "왜 이렇게 했지?"가 나올 것 같을 때
+
+자세한 ADR 작성 방법: [docs/adr/README.md](docs/adr/README.md)
+
+---
+
+## 시스템 아키텍처 (Big Picture)
+
+```
+[사용자 브라우저]
+      │
+      │ HTTP REST + SSE
+      ▼
+┌─────────────────────────────────────────┐
+│         Spring WebFlux API Server        │
+│  (Netty, Non-blocking, Event Loop)       │
+│                                          │
+│  ┌──────────┐  ┌──────────┐  ┌────────┐ │
+│  │Presentat-│  │Applicat- │  │Domain  │ │
+│  │ion Layer │→ │ion Layer │→ │Entities│ │
+│  │(Router/  │  │(Reactor  │  │(data   │ │
+│  │Controller│  │Mono/Flux)│  │class)  │ │
+│  └──────────┘  └──────────┘  └────────┘ │
+│                     │                    │
+│        ┌────────────┼───────────┐        │
+│        ▼            ▼           ▼        │
+│  ┌──────────┐ ┌──────────┐ ┌────────┐   │
+│  │R2DBC     │ │WebClient │ │Sinks   │   │
+│  │Repository│ │(Crawler) │ │(SSE)   │   │
+│  └──────────┘ └──────────┘ └────────┘   │
+└─────────────────────────────────────────┘
+        │               │
+        ▼               ▼
+  [PostgreSQL]    [쇼핑몰 URL들]
+  (Non-blocking   (병렬 크롤링
+   via R2DBC)      flatMap 50)
+```
+
+### 핵심 Reactive 흐름
+
+**크롤링 파이프라인** (10분 주기):
+```
+Scheduler → findByActiveTrue() [Flow] → toFlux()
+  → flatMap(50) { fetchPrice(url) }    # 최대 50개 동시 WebClient 요청
+  → filter { price != null }
+  → flatMap { priceHistoryRepository.save(history) }
+  → onErrorResume { log.warn; Mono.empty() }  # 일부 실패 허용
+```
+
+**SSE 알림 스트림**:
+```
+Client ──GET /api/v1/alerts/stream──►
+  Sinks.many().multicast() [Hot Publisher]
+    → alertSink.asFlux()
+    → map { ServerSentEvent.builder(it).build() }
+    → 구독자에게 브로드캐스트
+```
+
+---
+
 ## 디렉토리 구조
 
 ```
 /
 ├── src/
-│   └── main/java/com/flex/
-│       ├── domain/         # 도메인 엔티티
-│       ├── application/    # 서비스 레이어 (Reactor 로직)
-│       ├── infrastructure/ # R2DBC 레포지토리, WebClient
-│       ├── presentation/   # 컨트롤러 (SSE 포함)
-│       └── config/         # WebFlux, R2DBC, Security 설정
+│   └── main/kotlin/com/flex/
+│       ├── FlexApplication.kt          # 진입점
+│       ├── domain/                     # 도메인 엔티티 (data class + @Table)
+│       │   ├── Product.kt
+│       │   ├── PriceHistory.kt
+│       │   └── PriceAlert.kt
+│       ├── application/                # 서비스 레이어 (Mono/Flux 반환)
+│       │   ├── tracker/                # 가격 추적 로직
+│       │   ├── notification/           # SSE + 외부 알림
+│       │   └── crawler/                # WebClient 크롤링
+│       ├── infrastructure/             # R2DBC Repository, WebClient
+│       │   └── repository/
+│       ├── presentation/               # @RestController (suspend + Flow + SSE)
+│       └── config/                     # WebFlux, R2DBC, WebClient 설정
 ├── docs/
-│   ├── architecture/       # 시스템 설계 문서
-│   ├── api/                # API 설계
-│   └── blog/               # WebFlux 블로그 포스트 초안
+│   ├── adr/                            # Architecture Decision Records
+│   ├── architecture/                   # 시스템 설계 문서
+│   ├── api/                            # API 설계
+│   └── blog/                           # WebFlux 블로그 포스트 초안
+├── src/main/resources/
+│   ├── application.yml
+│   └── db/migration/                   # Flyway SQL 마이그레이션
 └── .github/
     └── workflows/
 ```
